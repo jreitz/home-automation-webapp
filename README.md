@@ -1,36 +1,150 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Home Automation Dashboard
 
-## Getting Started
+A real-time home automation dashboard for controlling and monitoring smart home devices.
 
-First, run the development server:
+## Features
+
+- **Quick Stats**: Temperature, humidity, power usage, presence at a glance
+- **Room Controls**: Toggle lights, heaters, and devices per room
+- **Scenes**: One-tap activation for Away, Home, Night, Morning modes
+- **Power Monitoring**: 24-hour power consumption chart
+- **Sauna Widget**: Temperature monitoring (sensor coming soon)
+- **Real-time Updates**: SSE connection to MQTT broker
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: Tailwind CSS
+- **Charts**: Recharts
+- **Protocols**: MQTT, SSE, REST
+
+## Quick Start
 
 ```bash
+# Install dependencies
+npm install
+
+# Copy environment template
+cp .env.example .env
+
+# Configure your devices
+nano .env
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Configuration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Environment Variables
 
-## Learn More
+Copy `.env.example` to `.env` and configure:
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MQTT_BROKER` | MQTT broker URL | `mqtt://mqtt.lan:1883` |
+| `MQTT_USERNAME` | MQTT username (optional) | `homeassistant` |
+| `MQTT_PASSWORD` | MQTT password (optional) | `secret` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Device Configuration
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Devices are configured in `src/app/page.tsx` in the `rooms` array. Each device needs:
 
-## Deploy on Vercel
+```typescript
+{
+  id: "device-id",           // Unique identifier
+  name: "Device Name",       // Display name
+  room: "room-id",           // Parent room ID
+  type: "switch",            // switch | sensor | thermostat
+  state: false,              // Current state
+  ip: "192.168.1.x",         // Device IP (for direct control)
+}
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Docker
+
+```bash
+# Build image
+docker build -t home-automation-dashboard .
+
+# Run container
+docker run -p 3000:3000 \
+  -e MQTT_BROKER=mqtt://mqtt.lan:1883 \
+  home-automation-dashboard
+```
+
+### Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+### Vercel
+
+```bash
+vercel deploy
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sensors` | GET | SSE stream for real-time sensor updates |
+| `/api/devices/:id` | POST | Toggle device state |
+| `/api/presence` | GET | Family presence status from Mikrotik |
+
+## Device Support
+
+### Currently Integrated
+
+| Device Type | Protocol | Notes |
+|-------------|----------|-------|
+| Shelly switches | HTTP API | Gen 1 & Gen 2 |
+| Shelly sensors | MQTT | H&T, Button |
+| Wemo switches | SOAP | Legacy devices |
+| Mikrotik routers | REST API | Presence detection |
+
+### Planned Support
+
+- Ecoflow Delta Pro Ultra (MQTT)
+- Stitch/Monoprice outlets
+- Sauna sensor (Shelly Pill + thermocouple)
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Next.js Dashboard                         │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────┐ │
+│  │ Stats    │ │ Rooms    │ │ Scenes   │ │ Power Chart    │ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────────┬───────┘ │
+└───────┼────────────┼────────────┼─────────────────┼────────┘
+        │            │            │                 │
+        └────────────┴──────┬─────┴─────────────────┘
+                            │
+                   ┌────────▼────────┐
+                   │   API Routes    │
+                   │  /api/sensors   │
+                   │  /api/devices   │
+                   └────────┬────────┘
+                            │
+       ┌────────────────────┼────────────────────┐
+       │                    │                    │
+  ┌────▼─────┐        ┌─────▼──────┐       ┌────▼─────┐
+  │  MQTT    │        │   REST     │       │  Mikrotik│
+  │  Broker  │        │   APIs     │       │  Router  │
+  └──────────┘        └────────────┘       └──────────┘
+```
+
+## Related
+
+- [UX Design Document](../home-automation-ux-design.md)
+- [FLA-10: Linear Task](https://linear.app)
+
+## License
+
+Private project for personal use.
