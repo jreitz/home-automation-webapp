@@ -1,0 +1,36 @@
+# Home Automation Dashboard
+# Local deployment configuration
+
+services:
+  home-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: home-dashboard:latest
+    container_name: home-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # MQTT Broker Configuration
+      - MQTT_BROKER=mqtt://mqtt.lan:1883
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      
+      # Mikrotik Router Configuration (for presence detection)
+      - MIKROTIK_HOST=192.168.1.1
+      - MIKROTIK_USER=${MIKROTIK_USER:-admin}
+      - MIKROTIK_PASS=${MIKROTIK_PASS:-}
+      
+      # Node Environment
+      - NODE_ENV=production
+    networks:
+      - home-network
+    # For Tailscale access, ensure Tailscale is running on the host
+    # The container will be accessible at http://localhost:3000 or via Tailscale IP
+
+networks:
+  home-network:
+    driver: bridge
+    # If you have an existing Docker network, use: external: true
+    # name: your-existing-network
