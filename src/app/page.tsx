@@ -100,6 +100,22 @@ export default function Home() {
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
+  // Mock power data for 24h chart (would come from Ecoflow/inverters in production)
+  const powerData = [
+    { time: '12am', power: 1.2 },
+    { time: '2am', power: 0.8 },
+    { time: '4am', power: 0.6 },
+    { time: '6am', power: 1.5 },
+    { time: '8am', power: 2.8 },
+    { time: '10am', power: 3.2 },
+    { time: '12pm', power: 2.9 },
+    { time: '2pm', power: 2.6 },
+    { time: '4pm', power: 2.4 },
+    { time: '6pm', power: 3.1 },
+    { time: '8pm', power: 2.8 },
+    { time: '10pm', power: 2.1 },
+  ];
+
   // Connect to SSE for real-time updates
   useEffect(() => {
     const eventSource = new EventSource('/api/sensors');
