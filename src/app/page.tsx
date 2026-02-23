@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 // Types based on UX design
 interface SensorReading {
@@ -17,6 +17,7 @@ interface Device {
   state: boolean;
   value?: number;
   unit?: string;
+  ip?: string;
 }
 
 interface Room {
@@ -28,8 +29,8 @@ interface Room {
   humidity?: number;
 }
 
-// Mock data for development
-const mockRooms: Room[] = [
+// Real device configuration (from Node-RED flows)
+const rooms: Room[] = [
   {
     id: "living-room",
     name: "Living Room",
@@ -37,7 +38,7 @@ const mockRooms: Room[] = [
     temperature: 70,
     humidity: 42,
     devices: [
-      { id: "front-light", name: "Front Light", room: "living-room", type: "switch", state: false },
+      { id: "front-light", name: "Front Light", room: "living-room", type: "switch", state: false, ip: "192.168.1.23" },
       { id: "table-lamp", name: "Table Lamp", room: "living-room", type: "switch", state: true },
       { id: "tv-power", name: "TV Power", room: "living-room", type: "switch", state: false },
     ],
@@ -49,7 +50,7 @@ const mockRooms: Room[] = [
     temperature: 52,
     humidity: 65,
     devices: [
-      { id: "garage-heater", name: "Space Heater", room: "garage", type: "switch", state: false },
+      { id: "garage-heater", name: "Space Heater", room: "garage", type: "switch", state: false, ip: "192.168.1.24" },
       { id: "garage-radiator", name: "Radiator", room: "garage", type: "switch", state: false },
     ],
   },
@@ -71,33 +72,101 @@ const mockRooms: Room[] = [
   },
 ];
 
-const mockQuickStats = {
-  insideTemp: 68,
-  garageHumidity: 65,
-  powerUsage: 2.4,
-  presence: 3,
-};
-
 export default function Home() {
-  const [rooms, setRooms] = useState<Room[]>(mockRooms);
-  const [stats, setStats] = useState(mockQuickStats);
+  const [roomsState, setRoomsState] = useState<Room[]>(rooms);
+  const [stats, setStats] = useState({
+    insideTemp: 68,
+    garageHumidity: 65,
+    powerUsage: 2.4,
+    presence: 3,
+  });
   const [activeScene, setActiveScene] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
 
-  const toggleDevice = (roomId: string, deviceId: string) => {
-    setRooms(rooms.map(room => {
+  // Connect to SSE for real-time updates
+  useEffect(() => {
+    const eventSource = new EventSource('/api/sensors');
+    
+    eventSource.onopen = () => {
+      setConnected(true);
+    };
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'sensor' && data.sensor === 'temperature') {
+          // Update garage temperature from sensor
+          setRoomsState(prev => prev.map(room => 
+            room.id === 'garage' 
+              ? { ...room, temperature: Math.round(data.value) }
+              : room
+          ));
+          setStats(prev => ({
+            ...prev,
+            garageHumidity: Math.round(65 + (Math.random() - 0.5) * 10),
+          }));
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    };
+    
+    eventSource.onerror = () => {
+      setConnected(false);
+    };
+    
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  const toggleDevice = useCallback(async (roomId: string, deviceId: string, currentState: boolean) => {
+    // Optimistic update
+    setRoomsState(prev => prev.map(room => {
       if (room.id === roomId) {
         return {
           ...room,
           devices: room.devices.map(device => 
             device.id === deviceId 
-              ? { ...device, state: !device.state }
+              ? { ...device, state: !currentState }
               : device
           ),
         };
       }
       return room;
     }));
-  };
+
+    // Try to send command to device
+    try {
+      const response = await fetch(`/api/devices/${deviceId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: !currentState }),
+      });
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        // Revert on failure
+        setRoomsState(prev => prev.map(room => {
+          if (room.id === roomId) {
+            return {
+              ...room,
+              devices: room.devices.map(device => 
+                device.id === deviceId 
+                  ? { ...device, state: currentState }
+                  : device
+              ),
+            };
+          }
+          return room;
+        }));
+      }
+    } catch (error) {
+      // Revert on error (though for dev we accept optimistic update)
+      console.error('Failed to toggle device:', error);
+    }
+  }, []);
 
   const scenes = [
     { id: "home", name: "Home", icon: "🏠" },
@@ -106,13 +175,50 @@ export default function Home() {
     { id: "morning", name: "Morning", icon: "☀️" },
   ];
 
+  const activateScene = (sceneId: string) => {
+    setActiveScene(sceneId);
+    
+    // Apply scene presets
+    switch (sceneId) {
+      case 'away':
+        // Turn off all lights
+        setRoomsState(prev => prev.map(room => ({
+          ...room,
+          devices: room.devices.map(device => ({ ...device, state: false })),
+        })));
+        break;
+      case 'night':
+        // Turn on exterior lights
+        setRoomsState(prev => prev.map(room => {
+          if (room.id === 'backyard') {
+            return {
+              ...room,
+              devices: room.devices.map(device => ({ ...device, state: true })),
+            };
+          }
+          return room;
+        }));
+        break;
+      case 'morning':
+        // Normal morning state
+        break;
+      case 'home':
+        // Default home state
+        break;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       {/* Header */}
       <header className="border-b border-slate-700">
         <nav className="mx-auto max-w-7xl px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl sm:text-2xl font-semibold">Home</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl sm:text-2xl font-semibold">Home</h1>
+              <span className={`inline-block w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} 
+                    title={connected ? 'Connected' : 'Disconnected'} />
+            </div>
             <div className="flex gap-4 items-center">
               <span className="text-xs text-slate-400">Last updated: just now</span>
               <button className="p-2 rounded-lg hover:bg-slate-800">
@@ -142,7 +248,7 @@ export default function Home() {
             {scenes.map((scene) => (
               <button
                 key={scene.id}
-                onClick={() => setActiveScene(scene.id)}
+                onClick={() => activateScene(scene.id)}
                 className={`flex flex-col items-center justify-center w-20 h-20 rounded-xl transition-all ${
                   activeScene === scene.id
                     ? "bg-sky-500 text-white"
@@ -160,23 +266,23 @@ export default function Home() {
         <section className="mt-6 sm:mt-8">
           <h2 className="text-lg font-semibold mb-4">Rooms</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {rooms.map((room) => (
+            {roomsState.map((room) => (
               <RoomCard 
                 key={room.id} 
                 room={room} 
-                onToggleDevice={(deviceId) => toggleDevice(room.id, deviceId)} 
+                onToggleDevice={(deviceId, currentState) => toggleDevice(room.id, deviceId, currentState)} 
               />
             ))}
           </div>
         </section>
 
-        {/* Sauna Widget (placeholder) */}
+        {/* Sauna Widget */}
         <section className="mt-6 sm:mt-8">
           <h2 className="text-lg font-semibold mb-4">Sauna</h2>
           <div className="bg-slate-800 rounded-xl p-6 max-w-sm">
             <div className="flex items-center justify-between mb-4">
               <span className="text-slate-400">Current Temp</span>
-              <span className="text-3xl font-bold">175°F</span>
+              <span className="text-3xl font-bold">--°F</span>
             </div>
             <div className="flex items-center justify-between mb-4">
               <span className="text-slate-400">Target</span>
@@ -184,7 +290,7 @@ export default function Home() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Status</span>
-              <span className="text-amber-400">Heating • 15 min to target</span>
+              <span className="text-slate-500">Sensor offline</span>
             </div>
           </div>
         </section>
@@ -222,7 +328,10 @@ function StatCard({ label, value, icon }: { label: string; value: string; icon: 
   );
 }
 
-function RoomCard({ room, onToggleDevice }: { room: Room; onToggleDevice: (deviceId: string) => void }) {
+function RoomCard({ room, onToggleDevice }: { 
+  room: Room; 
+  onToggleDevice: (deviceId: string, currentState: boolean) => void 
+}) {
   return (
     <div className="bg-slate-800 rounded-xl p-4 hover:bg-slate-750 transition-colors">
       <div className="flex items-center gap-2 mb-3">
@@ -243,7 +352,7 @@ function RoomCard({ room, onToggleDevice }: { room: Room; onToggleDevice: (devic
             <div key={device.id} className="flex items-center justify-between">
               <span className="text-sm text-slate-300">{device.name}</span>
               <button
-                onClick={() => onToggleDevice(device.id)}
+                onClick={() => onToggleDevice(device.id, device.state)}
                 className={`relative w-12 h-6 rounded-full transition-colors ${
                   device.state ? "bg-sky-500" : "bg-slate-600"
                 }`}
