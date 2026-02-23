@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // Types based on UX design
 interface SensorReading {
@@ -70,6 +71,22 @@ const rooms: Room[] = [
       { id: "back-porch", name: "Back Porch Light", room: "backyard", type: "switch", state: true },
     ],
   },
+];
+
+// Mock power consumption data (24 hours)
+const powerData = [
+  { time: '12am', power: 1.2 },
+  { time: '2am', power: 0.8 },
+  { time: '4am', power: 0.6 },
+  { time: '6am', power: 1.1 },
+  { time: '8am', power: 2.3 },
+  { time: '10am', power: 3.1 },
+  { time: '12pm', power: 2.8 },
+  { time: '2pm', power: 3.4 },
+  { time: '4pm', power: 3.2 },
+  { time: '6pm', power: 4.1 },
+  { time: '8pm', power: 3.8 },
+  { time: '10pm', power: 2.4 },
 ];
 
 export default function Home() {
@@ -295,11 +312,49 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Power Chart Placeholder */}
+        {/* Power Chart */}
         <section className="mt-6 sm:mt-8">
           <h2 className="text-lg font-semibold mb-4">Power Consumption (24h)</h2>
-          <div className="bg-slate-800 rounded-xl p-6 h-48 flex items-center justify-center">
-            <span className="text-slate-500">Chart coming soon</span>
+          <div className="bg-slate-800 rounded-xl p-4 sm:p-6">
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={powerData}>
+                <defs>
+                  <linearGradient id="powerGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis 
+                  dataKey="time" 
+                  stroke="#64748b" 
+                  fontSize={12}
+                  tickLine={false}
+                />
+                <YAxis 
+                  stroke="#64748b" 
+                  fontSize={12}
+                  tickLine={false}
+                  tickFormatter={(value) => `${value}kW`}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#1e293b', 
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    color: '#fff'
+                  }}
+                  formatter={(value) => [`${Number(value).toFixed(1)} kW`, 'Power']}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="power" 
+                  stroke="#0ea5e9" 
+                  strokeWidth={2}
+                  fill="url(#powerGradient)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </section>
       </main>
